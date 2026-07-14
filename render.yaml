@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: voice-translator-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    envVars:
+      - key: WHISPER_MODEL
+        value: tiny
+      - key: CORS_ORIGIN
+        value: https://your-vercel-app.vercel.app  # ← update this after Vercel deploy
+      - key: GEMINI_API_KEY
+        sync: false  # you'll enter this manually in Render dashboard

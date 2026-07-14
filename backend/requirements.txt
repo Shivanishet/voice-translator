@@ -6,3 +6,4 @@ deep-translator
 langdetect
 gTTS
 python-dotenv
+httpx
