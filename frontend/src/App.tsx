@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { saveTranslation, fetchHistory, deleteTranslation, type HistoryEntry } from "./historyService";
 
 const DEFAULT_BACKEND_ORIGIN = "http://127.0.0.1:8000";
 const API_BASE_URL =
@@ -45,6 +46,23 @@ const targetLanguageOptions = [
   { code: "ru", label: "Russian" },
 ];
 
+const LANG_FLAG: Record<string, string> = {
+  en: "🇬🇧", "en-US": "🇺🇸", es: "🇪🇸", "es-ES": "🇪🇸",
+  fr: "🇫🇷", "fr-FR": "🇫🇷", de: "🇩🇪", "de-DE": "🇩🇪",
+  hi: "🇮🇳", "hi-IN": "🇮🇳", ta: "🇮🇳", "ta-IN": "🇮🇳",
+  te: "🇮🇳", "te-IN": "🇮🇳", ja: "🇯🇵", "ja-JP": "🇯🇵",
+  "zh-CN": "🇨🇳", it: "🇮🇹", "it-IT": "🇮🇹",
+  pt: "🇧🇷", "pt-BR": "🇧🇷", ru: "🇷🇺", "ru-RU": "🇷🇺",
+};
+
+function formatTimeAgo(date: Date): string {
+  const diff = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return date.toLocaleDateString();
+}
+
 function App() {
   const recognitionRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -65,6 +83,34 @@ function App() {
   const [translatedAudioObjectUrl, setTranslatedAudioObjectUrl] = useState<string | null>(null);
   const [processingElapsedSec, setProcessingElapsedSec] = useState(0);
   const [recordedAudioBlob, setRecordedAudioBlob] = useState<Blob | null>(null);
+
+  // History state
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [savingToDb, setSavingToDb] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
+
+  // Load history from Firestore
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setDbError(null);
+    try {
+      const entries = await fetchHistory();
+      setHistory(entries);
+    } catch (e: any) {
+      setDbError("Could not load history. Check Firebase config.");
+      console.error("Firestore fetch error:", e);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (historyOpen) {
+      loadHistory();
+    }
+  }, [historyOpen, loadHistory]);
 
   // Decode audio base64 on response
   useEffect(() => {
@@ -169,12 +215,10 @@ function App() {
     setRecordedAudioBlob(null);
 
     try {
-      // Prompt microphone access & monitor volume
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       startMicMonitoring(stream);
 
-      // Start MediaRecorder to capture audio for Whisper fallback
       audioChunksRef.current = [];
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorder.ondataavailable = (event) => {
@@ -189,7 +233,6 @@ function App() {
       mediaRecorder.start();
       mediaRecorderRef.current = mediaRecorder;
 
-      // Also start browser SpeechRecognition for live preview
       // @ts-ignore
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (SpeechRecognition) {
@@ -215,15 +258,12 @@ function App() {
         };
 
         recognition.onerror = (event: any) => {
-          // Ignore non-critical errors — MediaRecorder still captures audio
           if (event.error !== "aborted" && event.error !== "no-speech") {
             console.warn("Speech recognition error:", event.error);
           }
         };
 
-        recognition.onend = () => {
-          // Speech recognition ended — don't stop recording, MediaRecorder continues
-        };
+        recognition.onend = () => {};
 
         recognitionRef.current = recognition;
         recognition.start();
@@ -238,7 +278,6 @@ function App() {
   };
 
   const stopRecording = () => {
-    // Stop browser speech recognition
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
@@ -248,7 +287,6 @@ function App() {
       recognitionRef.current = null;
     }
 
-    // Stop MediaRecorder (triggers onstop → sets recordedAudioBlob)
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       try {
         mediaRecorderRef.current.stop();
@@ -261,6 +299,30 @@ function App() {
     setIsRecording(false);
     stopActiveStream();
   };
+
+  // Save translation to Firestore after a successful result
+  const persistTranslation = useCallback(async (payload: TranslationResponse) => {
+    setSavingToDb(true);
+    setDbError(null);
+    try {
+      await saveTranslation({
+        originalText: payload.original_text,
+        translatedText: payload.translated_text,
+        sourceLanguage: payload.detected_source_language ?? sourceLanguage.split("-")[0],
+        targetLanguage: payload.target_language,
+        translationEngine: payload.translation_engine,
+      });
+      // Refresh history if panel is open
+      if (historyOpen) {
+        await loadHistory();
+      }
+    } catch (e: any) {
+      setDbError("Translation done, but failed to save to database.");
+      console.error("Firestore save error:", e);
+    } finally {
+      setSavingToDb(false);
+    }
+  }, [sourceLanguage, historyOpen, loadHistory]);
 
   const translateWithAudio = async (audioBlob: Blob) => {
     setIsProcessing(true);
@@ -282,13 +344,9 @@ function App() {
         let errorMessage = "Audio translation request failed.";
         try {
           const parsed = JSON.parse(responseText);
-          if (parsed.detail) {
-            errorMessage = parsed.detail;
-          }
+          if (parsed.detail) errorMessage = parsed.detail;
         } catch {
-          if (responseText) {
-            errorMessage = responseText;
-          }
+          if (responseText) errorMessage = responseText;
         }
         throw new Error(errorMessage);
       }
@@ -296,6 +354,7 @@ function App() {
       const payload = (await response.json()) as TranslationResponse;
       setSpokenText(payload.original_text);
       setResult(payload);
+      await persistTranslation(payload);
     } catch (caughtError: any) {
       let message =
         caughtError instanceof Error ? caughtError.message : "Unexpected translation error occurred.";
@@ -307,7 +366,6 @@ function App() {
   };
 
   const translateText = async () => {
-    // If no text was captured by browser speech recognition, use recorded audio as fallback
     if (!spokenText.trim() && recordedAudioBlob) {
       await translateWithAudio(recordedAudioBlob);
       return;
@@ -327,9 +385,7 @@ function App() {
     try {
       const response = await fetch(`${API_BASE_URL}/translate-text`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text: spokenText,
           target_language: targetLanguage,
@@ -342,19 +398,16 @@ function App() {
         let errorMessage = "Translation request failed.";
         try {
           const parsed = JSON.parse(responseText);
-          if (parsed.detail) {
-            errorMessage = parsed.detail;
-          }
+          if (parsed.detail) errorMessage = parsed.detail;
         } catch {
-          if (responseText) {
-            errorMessage = responseText;
-          }
+          if (responseText) errorMessage = responseText;
         }
         throw new Error(errorMessage);
       }
 
       const payload = (await response.json()) as TranslationResponse;
       setResult(payload);
+      await persistTranslation(payload);
     } catch (caughtError: any) {
       let message =
         caughtError instanceof Error ? caughtError.message : "Unexpected translation error occurred.";
@@ -365,14 +418,111 @@ function App() {
     }
   };
 
+  const handleDeleteEntry = async (id: string) => {
+    try {
+      await deleteTranslation(id);
+      setHistory((prev) => prev.filter((h) => h.id !== id));
+    } catch (e) {
+      console.error("Delete failed:", e);
+    }
+  };
+
+  const handleRestoreEntry = (entry: HistoryEntry) => {
+    setSpokenText(entry.originalText);
+    setHistoryOpen(false);
+  };
+
   return (
     <main className="container">
       <header className="header">
         <h1>AI Voice Translator</h1>
         <p className="subtitle">
-          Real-time speech recognition & translations powered by Gemini
+          Real-time speech recognition &amp; translations powered by Gemini
         </p>
+        <button
+          className="btn-history-toggle"
+          onClick={() => setHistoryOpen((o) => !o)}
+          title="Translation History"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          History
+          {history.length > 0 && !historyOpen && (
+            <span className="history-badge">{history.length}</span>
+          )}
+        </button>
       </header>
+
+      {/* History Panel */}
+      {historyOpen && (
+        <section className="history-panel animate-fade-in">
+          <div className="history-panel-header">
+            <h2>📜 Translation History</h2>
+            <div className="history-header-actions">
+              <button className="btn-refresh" onClick={loadHistory} disabled={historyLoading} title="Refresh">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                </svg>
+                {historyLoading ? "Loading…" : "Refresh"}
+              </button>
+              <button className="btn-close-history" onClick={() => setHistoryOpen(false)}>✕ Close</button>
+            </div>
+          </div>
+
+          {dbError && <div className="db-error-banner">{dbError}</div>}
+
+          {historyLoading ? (
+            <div className="history-loading">
+              <div className="spinner" />
+              <p>Loading from Firebase…</p>
+            </div>
+          ) : history.length === 0 ? (
+            <div className="history-empty">
+              <p>🗒️ No translations saved yet.</p>
+              <p className="history-empty-sub">Your translations will appear here automatically.</p>
+            </div>
+          ) : (
+            <ul className="history-list">
+              {history.map((entry) => (
+                <li key={entry.id} className="history-item">
+                  <div className="history-langs">
+                    <span>{LANG_FLAG[entry.sourceLanguage] ?? "🌐"} {entry.sourceLanguage.toUpperCase()}</span>
+                    <span className="history-arrow">→</span>
+                    <span>{LANG_FLAG[entry.targetLanguage] ?? "🌐"} {entry.targetLanguage.toUpperCase()}</span>
+                    <span className="history-time">{formatTimeAgo(entry.createdAt)}</span>
+                    <span className="history-engine">
+                      {entry.translationEngine === "gemini" ? "✨ Gemini" : "🌐 Google"}
+                    </span>
+                  </div>
+                  <div className="history-texts">
+                    <p className="history-original">"{entry.originalText}"</p>
+                    <p className="history-translated">→ "{entry.translatedText}"</p>
+                  </div>
+                  <div className="history-item-actions">
+                    <button
+                      className="btn-restore"
+                      onClick={() => handleRestoreEntry(entry)}
+                      title="Load this text into translator"
+                    >
+                      ↩ Restore
+                    </button>
+                    <button
+                      className="btn-delete"
+                      onClick={() => handleDeleteEntry(entry.id)}
+                      title="Delete this entry"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <div className="workspace">
         {/* Left Side: Speech Input Card */}
@@ -445,9 +595,16 @@ function App() {
                 disabled={isRecording || isProcessing || (!spokenText.trim() && !recordedAudioBlob)}
                 className="btn btn-translate"
               >
-                {isProcessing ? "Translating..." : "Translate & Speak"}
+                {isProcessing ? "Translating…" : "Translate & Speak"}
               </button>
             </div>
+
+            {savingToDb && (
+              <div className="db-saving-indicator">
+                <span className="saving-dot" />
+                Saving to Firebase…
+              </div>
+            )}
           </div>
         </section>
 
@@ -499,7 +656,7 @@ function App() {
               </div>
             ) : (
               <div className="empty-placeholder">
-                <p>Your translation will appear here after clicking 'Translate & Speak'</p>
+                <p>Your translation will appear here after clicking 'Translate &amp; Speak'</p>
               </div>
             )}
           </div>
@@ -521,6 +678,7 @@ function App() {
       </div>
 
       {error && <div className="error-banner">{error}</div>}
+      {dbError && !historyOpen && <div className="error-banner">{dbError}</div>}
     </main>
   );
 }

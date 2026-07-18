@@ -11,8 +11,9 @@ This starter project records voice in the browser, sends audio to a Python backe
 - Frontend: React + Vite + MediaRecorder API
 - Backend: FastAPI
 - Speech-to-Text: Whisper
-- Translation: `googletrans` (Google Translate wrapper)
+- Translation: Gemini 2.5 Flash (fallback to Google Translate via `deep_translator`)
 - Text-to-Speech: gTTS
+- Database: Firebase Firestore (for translation history)
 
 ## Project structure
 
@@ -61,6 +62,12 @@ Create `frontend/.env`:
 
 ```env
 VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_FIREBASE_API_KEY="your-api-key"
+VITE_FIREBASE_AUTH_DOMAIN="your-auth-domain"
+VITE_FIREBASE_PROJECT_ID="your-project-id"
+VITE_FIREBASE_STORAGE_BUCKET="your-storage-bucket"
+VITE_FIREBASE_MESSAGING_SENDER_ID="your-sender-id"
+VITE_FIREBASE_APP_ID="your-app-id"
 ```
 
 Run frontend:
@@ -75,5 +82,5 @@ Open the shown Vite URL (usually `http://localhost:5173`).
 
 - First Whisper run may be slow because it downloads the model.
 - Browser will ask for microphone permission.
-- This template does not store user data; no Supabase integration yet.
-- If you want, Supabase can be added next for auth/history storage.
+- The app automatically saves translation history to a Firebase Firestore database.
+- A "History" panel lets you view, restore, and delete past translations.
