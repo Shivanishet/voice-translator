@@ -12,10 +12,12 @@ WORKDIR /app
 
 # Copy and install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download the Whisper model during build (avoids cold-start delay)
-RUN python -c "import whisper; whisper.load_model('tiny')"
+# Install CPU-only PyTorch
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install remaining dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
