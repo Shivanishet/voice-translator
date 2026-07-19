@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { saveTranslation, fetchHistory, deleteTranslation, type HistoryEntry } from "./historyService";
 
-const DEFAULT_BACKEND_ORIGIN = "http://127.0.0.1:8000";
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ??
-  (import.meta.env.DEV ? "/api" : DEFAULT_BACKEND_ORIGIN);
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.DEV ? "/api" : "");
 
 type TranslationResponse = {
   original_text: string;
