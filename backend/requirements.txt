@@ -1,7 +1,8 @@
 fastapi
 uvicorn[standard]
 python-multipart
-openai-whisper
+torch==2.2.2
+openai-whisper==20240930
 deep-translator
 langdetect
 gTTS
