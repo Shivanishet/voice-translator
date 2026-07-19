@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from gtts import gTTS
 from gtts.lang import tts_langs
 from langdetect import detect
-import whisper
+from faster_whisper import WhisperModel
 from pydantic import BaseModel
 import httpx
 
@@ -37,76 +37,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-whisper_model_name = os.getenv("WHISPER_MODEL", "base")
-whisper_model = whisper.load_model(whisper_model_name)
+whisper_model_name = os.getenv("WHISPER_MODEL", "tiny")
+
+whisper_model = WhisperModel(
+    whisper_model_name,
+    device="cpu",
+    compute_type="int8"
+)
 
 
 def transcribe_best_effort(audio_wav_path: Path) -> str:
-    """
-    Whisper skips windows when ``no_speech_prob > no_speech_threshold``.
-    Lower thresholds skip *more* (more false negatives); higher values (toward 1) or ``None``
-    keep more audio as candidate speech — we had mistakenly defaulted toward more skipping earlier.
-    """
-    path_str = str(audio_wav_path)
-    lang_kw: dict[str, str] = {}
-    if lng := os.getenv("WHISPER_LANGUAGE", "").strip():
-        lang_kw["language"] = lng
-
-    tiers: list[dict[str, object]] = []
-
-    raw_ns = os.getenv("WHISPER_NO_SPEECH_THRESHOLD", "").strip()
-    if raw_ns and raw_ns.lower() not in {"none"}:
-        try:
-            tiers.append(
-                {
-                    **lang_kw,
-                    "fp16": False,
-                    "no_speech_threshold": float(raw_ns),
-                    "logprob_threshold": -1.0,
-                    "compression_ratio_threshold": 2.4,
-                }
-            )
-        except ValueError:
-            pass
-
-    tiers.extend(
-        (
-            {
-                **lang_kw,
-                "fp16": False,
-                "no_speech_threshold": 0.6,
-                "logprob_threshold": -1.0,
-                "compression_ratio_threshold": 2.4,
-            },
-            {
-                **lang_kw,
-                "fp16": False,
-                "no_speech_threshold": 0.9,
-                "logprob_threshold": -1.0,
-                "compression_ratio_threshold": 2.8,
-            },
-            {
-                **lang_kw,
-                "fp16": False,
-                "no_speech_threshold": None,
-                "compression_ratio_threshold": 3.0,
-                "logprob_threshold": -2.5,
-                "condition_on_previous_text": False,
-            },
-        )
+    segments, info = whisper_model.transcribe(
+        str(audio_wav_path),
+        beam_size=5
     )
 
-    dedup_seen: set[frozenset[tuple[str, str]]] = set()
-    for kwargs in tiers:
-        key = frozenset((k, repr(kwargs[k])) for k in sorted(kwargs))
-        if key in dedup_seen:
-            continue
-        dedup_seen.add(key)
-        text = whisper_model.transcribe(path_str, **kwargs).get("text", "").strip()
-        if text:
-            return text
+    text = "".join(segment.text for segment in segments).strip()
 
-    return ""
+    return text
 
 
 supported_tts_languages = set(tts_langs().keys())
