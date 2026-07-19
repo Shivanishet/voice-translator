@@ -13,8 +13,10 @@ WORKDIR /app
 # Copy and install Python dependencies
 COPY requirements.txt .
 
+RUN pip install --upgrade pip setuptools wheel
+
 # Install CPU-only PyTorch
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir torch==2.2.2 --index-url https://download.pytorch.org/whl/cpu
 
 # Install remaining dependencies
 RUN pip install --no-cache-dir -r requirements.txt
