@@ -23,26 +23,26 @@ export type HistoryEntry = {
   createdAt: Date;
 };
 
-const COLLECTION = "translations";
+const historyCollection = (uid: string) => collection(db, "users", uid, "history");
 
 /** Save a new translation to Firestore */
-export async function saveTranslation(data: {
+export async function saveTranslation(uid: string, data: {
   originalText: string;
   translatedText: string;
   sourceLanguage: string;
   targetLanguage: string;
   translationEngine: string | null;
 }): Promise<void> {
-  await addDoc(collection(db, COLLECTION), {
+  await addDoc(historyCollection(uid), {
     ...data,
     createdAt: serverTimestamp(),
   });
 }
 
 /** Fetch the 50 most recent translations, newest first */
-export async function fetchHistory(): Promise<HistoryEntry[]> {
+export async function fetchHistory(uid: string): Promise<HistoryEntry[]> {
   const q = query(
-    collection(db, COLLECTION),
+    historyCollection(uid),
     orderBy("createdAt", "desc"),
     limit(50)
   );
@@ -63,6 +63,6 @@ export async function fetchHistory(): Promise<HistoryEntry[]> {
 }
 
 /** Delete a single translation by document ID */
-export async function deleteTranslation(id: string): Promise<void> {
-  await deleteDoc(doc(db, COLLECTION, id));
+export async function deleteTranslation(uid: string, id: string): Promise<void> {
+  await deleteDoc(doc(db, "users", uid, "history", id));
 }

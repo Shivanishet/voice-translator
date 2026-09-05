@@ -1,0 +1,17 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/history/{historyId} {
+      allow read, delete: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+    }
+
+    match /translations/{documentId} {
+      allow read, write: if false;
+    }
+  }
+}

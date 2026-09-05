@@ -60,6 +60,23 @@ npm install
 
 Create `frontend/.env`:
 
+Copy the Firebase web app values from Firebase Console into these variables:
+
+```env
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_STORAGE_BUCKET=
+VITE_FIREBASE_MESSAGING_SENDER_ID=
+VITE_FIREBASE_APP_ID=
+```
+
+In Firebase Console, enable **Authentication > Sign-in method > Email/Password**.
+Deploy the root `firestore.rules` file to the same Firebase project. It allows each
+signed-in user to read, create, and delete only their own `users/{uid}/history` records.
+The old top-level `translations` records have no owner and are intentionally not
+automatically assigned to any account.
+
 
 
 Run frontend:
@@ -76,3 +93,5 @@ Open the shown Vite URL (usually `http://localhost:5173`).
 - Browser will ask for microphone permission.
 - The app automatically saves translation history to a Firebase Firestore database.
 - A "History" panel lets you view, restore, and delete past translations.
+- Sign-up and login use Firebase Authentication; Firebase manages password storage.
+- New history is stored at `users/{uid}/history` and is protected by Firestore rules.

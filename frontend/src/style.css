@@ -27,6 +27,103 @@ body {
   min-height: 100vh;
 }
 
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.auth-card {
+  width: min(100%, 420px);
+  padding: 2.5rem;
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+
+.auth-card h1 {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.auth-kicker {
+  color: var(--accent-blue);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 0 1.5rem;
+}
+
+.auth-subtitle {
+  color: var(--text-muted);
+  margin: 0 0 2rem;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.auth-form label {
+  color: #cbd5e1;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: rgba(15, 23, 42, 0.85);
+  color: var(--text-main);
+  font: inherit;
+  outline: none;
+}
+
+.auth-form input:focus {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px var(--glow-color);
+}
+
+.auth-submit {
+  margin-top: 1rem;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: white;
+}
+
+.auth-error {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  border-radius: var(--radius-md);
+  background: rgba(244, 63, 94, 0.1);
+  color: #f87171;
+  font-size: 0.9rem;
+}
+
+.auth-switch {
+  color: var(--text-muted);
+  text-align: center;
+  margin: 1.5rem 0 0;
+}
+
+.auth-switch button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #60a5fa;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
 .container {
   max-width: 1200px;
   margin: 0 auto;
@@ -36,6 +133,35 @@ body {
 .header {
   text-align: center;
   margin-bottom: 3rem;
+}
+
+.account-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.account-email {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.btn-logout {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.45rem 0.8rem;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn-logout:hover {
+  border-color: var(--accent-red);
+  color: #f87171;
 }
 
 h1 {

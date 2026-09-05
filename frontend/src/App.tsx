@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { onAuthStateChanged, type User } from "firebase/auth";
+import AuthPage from "./AuthPage";
+import { logout } from "./authService";
+import { auth } from "./firebase";
 import { saveTranslation, fetchHistory, deleteTranslation, type HistoryEntry } from "./historyService";
 
 const API_BASE_URL =
@@ -63,6 +67,9 @@ function formatTimeAgo(date: Date): string {
 }
 
 function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const recognitionRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -90,26 +97,38 @@ function App() {
   const [savingToDb, setSavingToDb] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
 
+  useEffect(() => {
+    return onAuthStateChanged(auth, (nextUser) => {
+      setUser(nextUser);
+      setAuthLoading(false);
+      setHistory([]);
+      setHistoryOpen(false);
+    });
+  }, []);
+
   // Load history from Firestore
   const loadHistory = useCallback(async () => {
+    if (!user) return;
     setHistoryLoading(true);
     setDbError(null);
     try {
-      const entries = await fetchHistory();
+      const entries = await fetchHistory(user.uid);
       setHistory(entries);
     } catch (e: any) {
-      setDbError("Could not load history. Check Firebase config.");
+      setDbError(e?.code === "permission-denied"
+        ? "You do not have permission to view this history."
+        : "Could not load history. Check your connection and try again.");
       console.error("Firestore fetch error:", e);
     } finally {
       setHistoryLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (historyOpen) {
       loadHistory();
     }
-  }, [historyOpen, loadHistory]);
+  }, [historyOpen, loadHistory, user]);
 
   // Decode audio base64 on response
   useEffect(() => {
@@ -304,7 +323,8 @@ function App() {
     setSavingToDb(true);
     setDbError(null);
     try {
-      await saveTranslation({
+      if (!user) return;
+      await saveTranslation(user.uid, {
         originalText: payload.original_text,
         translatedText: payload.translated_text,
         sourceLanguage: payload.detected_source_language ?? sourceLanguage.split("-")[0],
@@ -321,7 +341,7 @@ function App() {
     } finally {
       setSavingToDb(false);
     }
-  }, [sourceLanguage, historyOpen, loadHistory]);
+  }, [sourceLanguage, historyOpen, loadHistory, user]);
 
   const translateWithAudio = async (audioBlob: Blob) => {
     setIsProcessing(true);
@@ -419,7 +439,8 @@ function App() {
 
   const handleDeleteEntry = async (id: string) => {
     try {
-      await deleteTranslation(id);
+      if (!user) return;
+      await deleteTranslation(user.uid, id);
       setHistory((prev) => prev.filter((h) => h.id !== id));
     } catch (e) {
       console.error("Delete failed:", e);
@@ -430,6 +451,19 @@ function App() {
     setSpokenText(entry.originalText);
     setHistoryOpen(false);
   };
+
+  const handleLogout = async () => {
+    stopRecording();
+    await logout();
+  };
+
+  if (authLoading) {
+    return <main className="auth-page"><div className="spinner" /></main>;
+  }
+
+  if (!user) {
+    return <AuthPage mode={authMode} onModeChange={setAuthMode} />;
+  }
 
   return (
     <main className="container">
@@ -452,6 +486,10 @@ function App() {
             <span className="history-badge">{history.length}</span>
           )}
         </button>
+        <div className="account-actions">
+          <span className="account-email">{user.email}</span>
+          <button className="btn-logout" onClick={handleLogout}>Log out</button>
+        </div>
       </header>
 
       {/* History Panel */}
